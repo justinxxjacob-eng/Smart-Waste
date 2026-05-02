@@ -59,8 +59,10 @@ import resend
 resend.api_key = os.getenv("RESEND_API_KEY")
 
 def send_email(to_email, subject, html_body):
+    print("🔥 EMAIL FUNCTION CALLED")
+
     try:
-        response = resend.Emails.send({
+        resend.Emails.send({
             "from": os.getenv("EMAIL_FROM"),
             "to": to_email,
             "subject": subject,
