@@ -5,22 +5,26 @@ Single-file Flask Application
 """
 
 from flask import Flask, render_template_string, request, redirect, url_for, session, jsonify
+
+import os
 import sqlite3
 import hashlib
-import os
 import random
 import re
 import math
 import smtplib
-import threading   # ✅ FIX ADDED HERE
+import threading
 import ssl
-import resend 
 
-resend.api_key = os.getenv("RESEND_API_KEY")
+import resend
+
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 from functools import wraps
+
+# Initialize Resend API key
+resend.api_key = os.getenv("RESEND_API_KEY")
 
 app = Flask(__name__)
 app.secret_key = 'barangay_waste_secret_2024'
