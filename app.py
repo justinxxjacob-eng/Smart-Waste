@@ -997,16 +997,21 @@ COLLECTOR_HTML = """<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name=
 
 RESIDENT_HTML = """<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>My Dashboard - EcoTrack</title>""" + BASE_STYLE + """</head><body>""" + MOBILE_HEADER + SIDEBAR_RESIDENT + """<div class="main-content"><div class="topbar"><div class="topbar-title">🏡 My Dashboard</div><span>{{ today }}</span></div><div class="page-content">{% if household %}<div class="card mb-24" style="background:linear-gradient(135deg,var(--green-600),var(--green-800));color:#fff;border:none;"><div style="display:flex;align-items:center;gap:16px;"><div style="font-size:40px;">🏠</div><div><div style="font-size:18px;font-weight:800;">{{ session.name }}'s Household</div><div style="opacity:.85;">📍 {{ household.address }} | 🗺️ {{ household.barangay_zone }}</div></div>{% if last_log %}<div style="background:rgba(255,255,255,.15);padding:12px 18px;border-radius:10px;text-align:center;margin-left:auto;"><div style="font-size:11px;">Last: {{ last_log.status }}</div><div style="font-size:20px;">{% if last_log.status=='collected' %}✅{% elif last_log.status=='missed' %}❌{% else %}⏳{% endif %}</div></div>{% endif %}</div></div>{% endif %}<div class="grid-2 mb-24"><div class="card"><div class="card-header"><div class="card-title">📅 Schedule</div></div>{% if schedule %}{% for s in schedule %}<div style="display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><div><strong>{{ s.collection_day }}</strong></div><div style="color:var(--green-700);font-weight:700;">{% if format_time_ampm %}{{ format_time_ampm(s.collection_time) }}{% else %}{{ s.collection_time }}{% endif %}</div></div>{% endfor %}{% else %}<p>No schedule</p>{% endif %}</div><div class="card"><div class="card-header"><div class="card-title">📦 Collection History</div></div>{% if recent_collections %}<div class="collection-timeline">{% for c in recent_collections %}<div class="collection-item"><div class="collection-icon">{% if c.status == 'collected' %}✅{% elif c.status == 'missed' %}❌{% else %}⏳{% endif %}</div><div class="collection-info"><div style="font-weight:600;text-transform:capitalize;">{{ c.status }}</div>{% if c.bin_count %}<div style="font-size:11px;color:var(--text-muted);">{{ c.bin_count }}x {{ c.bin_type.replace('_',' ') if c.bin_type else '' }} · {{ c.fill_level }} fill</div>{% endif %}</div><div class="collection-date">{{ c.collected_at[:10] }}</div></div>{% endfor %}</div>{% else %}<p>No history yet</p>{% endif %}</div></div><div class="grid-2 mb-24"><div class="card"><div class="card-header"><div class="card-title">🔔 Notifications</div></div>{% if notifs %}{% for n in notifs %}<div style="padding:10px 0;border-bottom:1px solid var(--border);"><div>{{ n.message }}</div><div style="font-size:11px;color:var(--text-muted);">{{ n.sent_at[:16] }}</div></div>{% endfor %}{% else %}<p>No notifications</p>{% endif %}</div><div class="card"><div class="card-header"><div class="card-title">📢 Report</div></div><form method="POST" action="/resident/report"><div class="form-group"><label class="form-label">Issue</label><select name="issue_type" class="form-control"><option value="missed pickup">Missed Pickup</option><option value="overflow">Overflow</option><option value="wrong schedule">Wrong Schedule</option><option value="other">Other</option></select></div><div class="form-group"><label class="form-label">Description</label><textarea name="description" class="form-control" rows="3" required></textarea></div><button type="submit" class="btn btn-primary" style="width:100%;">Submit</button></form></div></div></div></div>""" + JS_SIDEBAR + """</body></html>"""
 
+import os
+
 if __name__ == '__main__':
     init_db()
     run_ml_prediction()
+
     print("""
 ╔══════════════════════════════════════════════════════╗
 ║  ♻️  EcoTrack - Smart Barangay Waste Collection     ║
-║  Admin:     admin@barangay.gov / admin123            ║
-║  Collector: collector@barangay.gov / collector123    ║
-║  Resident:  resident@barangay.gov / resident123      ║
-║  Running at: http://127.0.0.1:5000                   ║
+║  Running on Render                                  ║
 ╚══════════════════════════════════════════════════════╝
     """)
-    app.run(debug=True, port=5000)
+
+    app.run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 10000)),
+        debug=False
+    )
