@@ -26,7 +26,7 @@ DATABASE = 'barangay_waste.db'
 # ═══════════════════════════════════════════════════
 EMAIL_ENABLED = True
 GMAIL_USER = "justinxxjeffjacob@gmail.com"
-GMAIL_APP_PASSWORD = "vgpd phsx ipzp ckds"
+GMAIL_APP_PASSWORD = "yqok glkt qtuu asar"
 
 # ═══════════════════════════════════════════════════
 # WEBSITE URL - CHANGE THIS when deployed!
