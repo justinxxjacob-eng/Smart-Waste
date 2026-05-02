@@ -14,7 +14,9 @@ import math
 import smtplib
 import threading   # ✅ FIX ADDED HERE
 import ssl
+import resend 
 
+resend.api_key = os.getenv("RESEND_API_KEY")
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
@@ -47,21 +49,19 @@ def hash_password(password):
 def generate_code():
     return str(random.randint(100000, 999999))
 
+import os
+import resend
+
+resend.api_key = os.getenv("RESEND_API_KEY")
+
 def send_email(to_email, subject, html_body):
     try:
-        print("📧 Sending email to:", to_email)
-
-        msg = MIMEMultipart()
-        msg['From'] = GMAIL_USER
-        msg['To'] = to_email
-        msg['Subject'] = subject
-        msg.attach(MIMEText(html_body, 'html'))
-
-        context = ssl.create_default_context()
-
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465, context=context) as server:
-            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-            server.send_message(msg)
+        response = resend.Emails.send({
+            "from": os.getenv("EMAIL_FROM"),
+            "to": to_email,
+            "subject": subject,
+            "html": html_body
+        })
 
         print("✅ Email sent successfully")
         return True
