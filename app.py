@@ -13,6 +13,7 @@ import re
 import math
 import smtplib
 import threading   # ✅ FIX ADDED HERE
+import ssl
 
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -48,23 +49,25 @@ def generate_code():
 
 def send_email(to_email, subject, html_body):
     try:
+        print("📧 Sending email to:", to_email)
+
         msg = MIMEMultipart()
         msg['From'] = GMAIL_USER
         msg['To'] = to_email
         msg['Subject'] = subject
-
         msg.attach(MIMEText(html_body, 'html'))
 
-        with smtplib.SMTP('smtp.gmail.com', 587, timeout=10) as server:
-            server.starttls()
+        context = ssl.create_default_context()
+
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465, context=context) as server:
             server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
             server.send_message(msg)
 
-        print(f"✅ Email sent to {to_email}")
+        print("✅ Email sent successfully")
         return True
 
     except Exception as e:
-        print(f"❌ Email error: {e}")
+        print("❌ Email error:", e)
         return False
 
 def send_verification_email(to_email, name, code):
