@@ -31,7 +31,7 @@ GMAIL_APP_PASSWORD = "vgpd phsx ipzp ckds"
 # ═══════════════════════════════════════════════════
 # WEBSITE URL - CHANGE THIS when deployed!
 # ═══════════════════════════════════════════════════
-WEBSITE_URL = "http://127.0.0.1:5000"
+WEBSITE_URL = "https://smart-waste-4.onrender.com"
 
 def get_db():
     conn = sqlite3.connect(DATABASE)
