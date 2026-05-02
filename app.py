@@ -557,7 +557,8 @@ def register():
                     send_verification_email(email, name, verification_code)
                     return redirect(url_for('verify_email', email=email))
                 except Exception as e:
-                    errors.append('An error occurred. Please try again.')
+                    print("REGISTER ERROR:", e)
+                    errors.append(str(e))
                 finally:
                     try: conn.close()
                     except: pass
