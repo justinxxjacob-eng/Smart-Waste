@@ -45,66 +45,74 @@ def generate_code():
     return str(random.randint(100000, 999999))
 
 def send_email(to_email, subject, html_body):
-    if not EMAIL_ENABLED:
-        print(f"\n📧 [SIMULATED EMAIL]")
-        print(f"   To: {to_email}")
-        print(f"   Subject: {subject}")
-        print(f"   Body: {html_body[:200]}...\n")
-        return True
     try:
         msg = MIMEMultipart()
         msg['From'] = GMAIL_USER
         msg['To'] = to_email
         msg['Subject'] = subject
+
         msg.attach(MIMEText(html_body, 'html'))
-        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+
+        with smtplib.SMTP('smtp.gmail.com', 587, timeout=10) as server:
             server.starttls()
             server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
             server.send_message(msg)
+
         print(f"✅ Email sent to {to_email}")
         return True
+
     except Exception as e:
         print(f"❌ Email error: {e}")
         return False
 
 def send_verification_email(to_email, name, code):
     subject = "EcoTrack - Verify Your Email Address"
+
     body = f"""
-    <div style="font-family:sans-serif;max-width:500px;margin:auto;padding:20px;border:1px solid #e2e8f0;border-radius:12px;">
-        <h2 style="color:#16a34a;">♻️ EcoTrack</h2>
+    <div style="font-family:sans-serif;max-width:500px;margin:auto;padding:20px;">
+        <h2>♻️ EcoTrack</h2>
         <h3>Welcome, {name}!</h3>
-        <p>Thank you for registering with EcoTrack. Please use the verification code below to activate your account:</p>
-        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:20px;text-align:center;margin:20px 0;">
-            <span style="font-size:32px;font-weight:800;letter-spacing:8px;color:#15803d;">{code}</span>
+
+        <p>Your verification code:</p>
+
+        <div style="font-size:32px;font-weight:bold;letter-spacing:5px;">
+            {code}
         </div>
-        <p>This code will expire in 30 minutes.</p>
-        <p>If you did not create this account, please ignore this email.</p>
-        <hr style="border:1px solid #e2e8f0;margin:20px 0;">
-        <p style="color:#64748b;font-size:12px;">EcoTrack - Smart Barangay Waste Collection System</p>
+
+        <p>This code expires in 30 minutes.</p>
     </div>
     """
-    return send_email(to_email, subject, body)
+
+    # ✅ REAL-TIME (non-blocking)
+    threading.Thread(
+        target=send_email,
+        args=(to_email, subject, body)
+    ).start()
 
 def send_reset_email(to_email, name, token):
     reset_link = f"{WEBSITE_URL}/reset-password/{token}"
     subject = "EcoTrack - Reset Your Password"
+
     body = f"""
-    <div style="font-family:sans-serif;max-width:500px;margin:auto;padding:20px;border:1px solid #e2e8f0;border-radius:12px;">
-        <h2 style="color:#16a34a;">♻️ EcoTrack</h2>
-        <h3>Password Reset Request</h3>
+    <div style="font-family:sans-serif;max-width:500px;margin:auto;padding:20px;">
+        <h2>♻️ EcoTrack</h2>
+        <h3>Password Reset</h3>
+
         <p>Hello {name},</p>
-        <p>We received a request to reset your password. Click the button below to create a new password:</p>
-        <div style="text-align:center;margin:20px 0;">
-            <a href="{reset_link}" style="background:#16a34a;color:white;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:600;">Reset Password</a>
-        </div>
-        <p>Or copy this link: <br><small style="color:#64748b;">{reset_link}</small></p>
-        <p>This link will expire in 30 minutes.</p>
-        <p>If you did not request this, please ignore this email.</p>
-        <hr style="border:1px solid #e2e8f0;margin:20px 0;">
-        <p style="color:#64748b;font-size:12px;">EcoTrack - Smart Barangay Waste Collection System</p>
+
+        <a href="{reset_link}" 
+           style="background:#16a34a;color:white;padding:10px 20px;text-decoration:none;">
+           Reset Password
+        </a>
+
+        <p>If you didn't request this, ignore this email.</p>
     </div>
     """
-    return send_email(to_email, subject, body)
+
+    threading.Thread(
+        target=send_email,
+        args=(to_email, subject, body)
+    ).start()
 
 def is_valid_name(name):
     if not name or len(name.strip()) < 3:
