@@ -63,14 +63,13 @@ def send_email(to_email, subject, html_body):
 
     try:
         response = resend.Emails.send({
-            "from": "onboarding@resend.dev",
+            "from": "onboarding@resend.dev",  # fixed sender
             "to": to_email,
             "subject": subject,
             "html": html_body
         })
 
-        print("✅ RESPONSE:", response)  # 🔥 IMPORTANT DEBUG
-
+        print("✅ RESPONSE:", response)
         return True
 
     except Exception as e:
