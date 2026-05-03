@@ -16,10 +16,15 @@ import smtplib
 import threading
 import ssl
 
+import resend
+
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 from functools import wraps
+
+# Initialize Resend API key
+resend.api_key = os.getenv("RESEND_API_KEY")
 
 app = Flask(__name__)
 app.secret_key = 'barangay_waste_secret_2024'
@@ -48,65 +53,77 @@ def hash_password(password):
 def generate_code():
     return str(random.randint(100000, 999999))
 
+import os
+import resend
+
+resend.api_key = os.getenv("RESEND_API_KEY")
+
 def send_email(to_email, subject, html_body):
-    """Send email using Gmail SMTP"""
     print("🔥 EMAIL FUNCTION CALLED")
-    
-    if not EMAIL_ENABLED:
-        print(f"📧 [SIMULATED] To: {to_email}")
-        return True
-    
+
     try:
-        msg = MIMEMultipart()
-        msg['From'] = GMAIL_USER
-        msg['To'] = to_email
-        msg['Subject'] = subject
-        msg.attach(MIMEText(html_body, 'html'))
-        
-        with smtplib.SMTP('smtp.gmail.com', 587) as server:
-            server.starttls()
-            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-            server.send_message(msg)
-        
-        print(f"✅ Email sent to {to_email}")
+        resend.Emails.send({
+            "from": os.getenv("EMAIL_FROM"),
+            "to": to_email,
+            "subject": subject,
+            "html": html_body
+        })
+
+        print("✅ Email sent successfully")
         return True
+
     except Exception as e:
-        print(f"❌ Email error: {e}")
+        print("❌ Email error:", e)
         return False
 
 def send_verification_email(to_email, name, code):
     subject = "EcoTrack - Verify Your Email Address"
+
     body = f"""
     <div style="font-family:sans-serif;max-width:500px;margin:auto;padding:20px;">
         <h2>♻️ EcoTrack</h2>
         <h3>Welcome, {name}!</h3>
+
         <p>Your verification code:</p>
+
         <div style="font-size:32px;font-weight:bold;letter-spacing:5px;">
             {code}
         </div>
+
         <p>This code expires in 30 minutes.</p>
     </div>
     """
-    # Diretso na, walay threading
-    send_email(to_email, subject, body)
+
+    # ✅ REAL-TIME (non-blocking)
+    threading.Thread(
+        target=send_email,
+        args=(to_email, subject, body)
+    ).start()
 
 def send_reset_email(to_email, name, token):
     reset_link = f"{WEBSITE_URL}/reset-password/{token}"
     subject = "EcoTrack - Reset Your Password"
+
     body = f"""
     <div style="font-family:sans-serif;max-width:500px;margin:auto;padding:20px;">
         <h2>♻️ EcoTrack</h2>
         <h3>Password Reset</h3>
+
         <p>Hello {name},</p>
+
         <a href="{reset_link}" 
            style="background:#16a34a;color:white;padding:10px 20px;text-decoration:none;">
            Reset Password
         </a>
+
         <p>If you didn't request this, ignore this email.</p>
     </div>
     """
-    # Diretso na, walay threading
-    send_email(to_email, subject, body)
+
+    threading.Thread(
+        target=send_email,
+        args=(to_email, subject, body)
+    ).start()
 
 def is_valid_name(name):
     if not name or len(name.strip()) < 3:
@@ -991,6 +1008,8 @@ NOTIF_HTML = """<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="vie
 COLLECTOR_HTML = """<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Collector Dashboard - EcoTrack</title>""" + BASE_STYLE + """<script>function updateEstimate(){const c=parseInt(document.getElementById('est_bin_count').value)||0,t=document.getElementById('est_bin_type').value,f=document.getElementById('est_fill_level').value;const w={'small_bag':8,'medium_bag':15,'large_bag':25,'small_drum':30,'medium_drum':60,'large_drum':100,'small_bin':20,'large_bin':40};const m={'quarter':0.25,'half':0.5,'mostly':0.75,'full':1.0,'overflow':1.3};document.getElementById('estimated_result').textContent='Estimated: '+Math.round(c*(w[t]||15)*(m[f]||1.0))+' kg'}document.addEventListener('DOMContentLoaded',function(){['est_bin_count','est_bin_type','est_fill_level'].forEach(id=>{const el=document.getElementById(id);if(el){el.addEventListener('change',updateEstimate);el.addEventListener('input',updateEstimate)}});updateEstimate()});function togglePred(zoneId){const el=document.getElementById('pred-'+zoneId);if(el){el.style.display=el.style.display==='none'?'block':'none';}}</script></head><body>""" + MOBILE_HEADER + SIDEBAR_COLLECTOR + """<div class="main-content"><div class="topbar"><div class="topbar-title">🚛 Collector Dashboard</div><span>{{ today }}'s Routes</span></div><div class="page-content"><div class="stats-grid mb-24">{% set ct=stats|selectattr('status','eq','collected')|list %}{% set mt=stats|selectattr('status','eq','missed')|list %}{% set dt=stats|selectattr('status','eq','delayed')|list %}<div class="stat-card"><div class="stat-icon green">✅</div><div class="stat-label">Collected</div><div class="stat-value">{{ ct[0].cnt if ct else 0 }}</div></div><div class="stat-card"><div class="stat-icon red">❌</div><div class="stat-label">Missed</div><div class="stat-value">{{ mt[0].cnt if mt else 0 }}</div></div><div class="stat-card"><div class="stat-icon yellow">⏳</div><div class="stat-label">Delayed</div><div class="stat-value">{{ dt[0].cnt if dt else 0 }}</div></div><div class="stat-card"><div class="stat-icon blue">🗺️</div><div class="stat-label">Zones</div><div class="stat-value">{{ assigned|length }}</div></div></div><div class="alert alert-info mb-24"><strong>📏 Guide:</strong> Small Bag (8kg) | Medium Bag (15kg) | Large Bag (25kg) | Small Drum (30kg) | Medium Drum (60kg) | Large Drum (100kg)</div><div class="grid-2 mb-24"><div class="card"><div class="card-header"><div class="card-title">📍 Today's Assigned Zones</div></div>{% if assigned %}{% for a in assigned %}<div style="background:var(--green-50);border:1px solid var(--green-200);border-radius:var(--radius-sm);padding:14px;margin-bottom:10px;"><div style="display:flex;justify-content:space-between;margin-bottom:8px;"><div><strong>{{ a.zone_name }}</strong></div><span style="font-family:'DM Mono';color:var(--green-700);background:#fff;padding:3px 8px;border-radius:6px;">⏰ {{ a.collection_time }}</span></div>{% if zone_predictions.get(a.zone_id) %}<div style="margin-bottom:10px;"><button type="button" onclick="togglePred({{ a.zone_id }})" class="btn btn-secondary btn-sm" style="width:100%;">🔮 View ML Predictions</button><div id="pred-{{ a.zone_id }}" style="display:none;margin-top:8px;background:#fff;border-radius:8px;padding:10px;border:1px solid var(--green-200);"><div style="font-size:11px;font-weight:700;color:var(--text-muted);margin-bottom:6px;">7-Day Forecast</div><div style="display:flex;flex-wrap:wrap;gap:4px;">{% for pred in zone_predictions[a.zone_id] %}<span class="pred-pill pred-pill-{{ pred.waste_level }}"><span class="risk-dot risk-{{ pred.waste_level }}" style="width:7px;height:7px;"></span>{{ pred.predicted_date[5:] }} · {{ pred.waste_level }} · {{ (pred.confidence_score*100)|int }}%</span>{% endfor %}</div></div></div>{% endif %}<form method="POST" action="/collector/log"><input type="hidden" name="zone_id" value="{{ a.zone_id }}"><div class="form-group" style="margin-bottom:6px;"><label class="form-label" style="font-size:10px;">Containers</label><input type="number" name="bin_count" class="form-control" value="2" min="0" max="20" style="padding:6px 10px;font-size:12px;" required></div><div class="form-group" style="margin-bottom:6px;"><label class="form-label" style="font-size:10px;">Type</label><select name="bin_type" class="form-control" style="padding:6px 10px;font-size:12px;"><option value="small_bag">Small Bag (8kg)</option><option value="medium_bag">Medium Bag (15kg)</option><option value="large_bag">Large Bag (25kg)</option><option value="small_drum">Small Drum (30kg)</option><option value="medium_drum" selected>Medium Drum (60kg)</option><option value="large_drum">Large Drum (100kg)</option></select></div><div class="form-group" style="margin-bottom:6px;"><label class="form-label" style="font-size:10px;">Fill</label><select name="fill_level" class="form-control" style="padding:6px 10px;font-size:12px;"><option value="quarter">25%</option><option value="half">50%</option><option value="mostly">75%</option><option value="full" selected>100%</option><option value="overflow">Overflow</option></select></div><div class="form-group" style="margin-bottom:6px;"><label class="form-label" style="font-size:10px;">Status</label><select name="status" class="form-control" style="padding:6px 10px;font-size:12px;"><option value="collected">✅ Collected</option><option value="missed">❌ Missed</option><option value="delayed">⏳ Delayed</option></select></div><div class="form-group" style="margin-bottom:6px;"><label class="form-label" style="font-size:10px;">Remarks</label><input type="text" name="remarks" class="form-control" style="padding:6px 10px;font-size:12px;" placeholder="Optional..."></div><button type="submit" class="btn btn-primary btn-sm" style="width:100%;">📝 Log</button></form></div>{% endfor %}{% else %}<div class="empty-state"><p>No collections scheduled today</p></div>{% endif %}</div><div><div class="card mb-20"><div class="card-header"><div class="card-title">🧮 Live Calculator</div></div><div class="form-group"><label class="form-label">Containers</label><input type="number" id="est_bin_count" class="form-control" value="3" min="0" max="20"></div><div class="form-group"><label class="form-label">Type</label><select id="est_bin_type" class="form-control"><option value="small_bag">Small Bag (8kg)</option><option value="medium_bag">Medium Bag (15kg)</option><option value="large_bag">Large Bag (25kg)</option><option value="small_drum">Small Drum (30kg)</option><option value="medium_drum" selected>Medium Drum (60kg)</option><option value="large_drum">Large Drum (100kg)</option></select></div><div class="form-group"><label class="form-label">Fill</label><select id="est_fill_level" class="form-control"><option value="quarter">25%</option><option value="half">50%</option><option value="mostly">75%</option><option value="full" selected>100%</option><option value="overflow">Overflow</option></select></div><div class="estimation-result" id="estimated_result">Estimated: -- kg</div></div><div class="card"><div class="card-header"><div class="card-title">📝 Manual Log</div></div><form method="POST" action="/collector/log"><div class="form-group"><label class="form-label">Zone</label><select name="zone_id" class="form-control">{% for z in all_zones %}<option value="{{ z.zone_id }}">{{ z.zone_name }}</option>{% endfor %}</select></div><div class="form-group"><label class="form-label">Status</label><select name="status" class="form-control"><option value="collected">✅ Collected</option><option value="missed">❌ Missed</option><option value="delayed">⏳ Delayed</option></select></div><div class="form-group"><label class="form-label">Containers</label><input type="number" name="bin_count" class="form-control" value="2" min="0" required></div><div class="form-group"><label class="form-label">Type</label><select name="bin_type" class="form-control"><option value="medium_drum" selected>Medium Drum (60kg)</option><option value="large_drum">Large Drum (100kg)</option><option value="small_drum">Small Drum (30kg)</option></select></div><div class="form-group"><label class="form-label">Fill</label><select name="fill_level" class="form-control"><option value="full" selected>Full</option><option value="mostly">Mostly</option><option value="half">Half</option><option value="quarter">Quarter</option></select></div><div class="form-group"><label class="form-label">Remarks</label><textarea name="remarks" class="form-control" rows="2" placeholder="Optional..."></textarea></div><button type="submit" class="btn btn-primary" style="width:100%;">Submit Log</button></form></div></div></div><div class="card"><div class="card-header"><div class="card-title">📋 Recent Logs</div></div><table><thead><tr><th>Zone</th><th>Status</th><th>Volume</th><th>Time</th></tr></thead><tbody>{% for l in recent_logs %}<tr><td><strong>{{ l.zone_name }}</strong></td><td><span class="badge {% if l.status=='collected' %}badge-green{% elif l.status=='missed' %}badge-red{% else %}badge-yellow{% endif %}">{{ l.status }}</span></td><td style="font-size:12px;">{% if l.bin_count %}{{ l.bin_count }}x {{ l.bin_type.replace('_',' ') }}{% else %}—{% endif %}</td><td style="font-size:11px;">{{ l.collected_at[:16] }}</td></tr>{% endfor %}</tbody></table></div></div></div>""" + JS_SIDEBAR + """</body></html>"""
 
 RESIDENT_HTML = """<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>My Dashboard - EcoTrack</title>""" + BASE_STYLE + """</head><body>""" + MOBILE_HEADER + SIDEBAR_RESIDENT + """<div class="main-content"><div class="topbar"><div class="topbar-title">🏡 My Dashboard</div><span>{{ today }}</span></div><div class="page-content">{% if household %}<div class="card mb-24" style="background:linear-gradient(135deg,var(--green-600),var(--green-800));color:#fff;border:none;"><div style="display:flex;align-items:center;gap:16px;"><div style="font-size:40px;">🏠</div><div><div style="font-size:18px;font-weight:800;">{{ session.name }}'s Household</div><div style="opacity:.85;">📍 {{ household.address }} | 🗺️ {{ household.barangay_zone }}</div></div>{% if last_log %}<div style="background:rgba(255,255,255,.15);padding:12px 18px;border-radius:10px;text-align:center;margin-left:auto;"><div style="font-size:11px;">Last: {{ last_log.status }}</div><div style="font-size:20px;">{% if last_log.status=='collected' %}✅{% elif last_log.status=='missed' %}❌{% else %}⏳{% endif %}</div></div>{% endif %}</div></div>{% endif %}<div class="grid-2 mb-24"><div class="card"><div class="card-header"><div class="card-title">📅 Schedule</div></div>{% if schedule %}{% for s in schedule %}<div style="display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><div><strong>{{ s.collection_day }}</strong></div><div style="color:var(--green-700);font-weight:700;">{% if format_time_ampm %}{{ format_time_ampm(s.collection_time) }}{% else %}{{ s.collection_time }}{% endif %}</div></div>{% endfor %}{% else %}<p>No schedule</p>{% endif %}</div><div class="card"><div class="card-header"><div class="card-title">📦 Collection History</div></div>{% if recent_collections %}<div class="collection-timeline">{% for c in recent_collections %}<div class="collection-item"><div class="collection-icon">{% if c.status == 'collected' %}✅{% elif c.status == 'missed' %}❌{% else %}⏳{% endif %}</div><div class="collection-info"><div style="font-weight:600;text-transform:capitalize;">{{ c.status }}</div>{% if c.bin_count %}<div style="font-size:11px;color:var(--text-muted);">{{ c.bin_count }}x {{ c.bin_type.replace('_',' ') if c.bin_type else '' }} · {{ c.fill_level }} fill</div>{% endif %}</div><div class="collection-date">{{ c.collected_at[:10] }}</div></div>{% endfor %}</div>{% else %}<p>No history yet</p>{% endif %}</div></div><div class="grid-2 mb-24"><div class="card"><div class="card-header"><div class="card-title">🔔 Notifications</div></div>{% if notifs %}{% for n in notifs %}<div style="padding:10px 0;border-bottom:1px solid var(--border);"><div>{{ n.message }}</div><div style="font-size:11px;color:var(--text-muted);">{{ n.sent_at[:16] }}</div></div>{% endfor %}{% else %}<p>No notifications</p>{% endif %}</div><div class="card"><div class="card-header"><div class="card-title">📢 Report</div></div><form method="POST" action="/resident/report"><div class="form-group"><label class="form-label">Issue</label><select name="issue_type" class="form-control"><option value="missed pickup">Missed Pickup</option><option value="overflow">Overflow</option><option value="wrong schedule">Wrong Schedule</option><option value="other">Other</option></select></div><div class="form-group"><label class="form-label">Description</label><textarea name="description" class="form-control" rows="3" required></textarea></div><button type="submit" class="btn btn-primary" style="width:100%;">Submit</button></form></div></div></div></div>""" + JS_SIDEBAR + """</body></html>"""
+
+import os
 
 if __name__ == '__main__':
     init_db()
