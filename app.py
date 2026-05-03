@@ -51,33 +51,36 @@ def generate_code():
 import smtplib
 from email.mime.text import MIMEText
 
+import smtplib
+from email.mime.text import MIMEText
+
 def send_email(to_email, subject, body):
     sender = "justinxxjeffjacob@gmail.com"
     app_password = "yqokglktqtuuasar".replace(" ", "")
 
-    msg = MIMEText(body, "html")
-    msg["Subject"] = subject
-    msg["From"] = sender
-    msg["To"] = to_email
-
     try:
-        print("📧 Connecting to Gmail SMTP...")
+        print("📧 START SMTP CONNECTION")
 
         server = smtplib.SMTP("smtp.gmail.com", 587, timeout=30)
+        server.set_debuglevel(1)  # 👈 VERY IMPORTANT DEBUG
+
         server.ehlo()
         server.starttls()
         server.ehlo()
 
+        print("🔐 LOGGING IN...")
         server.login(sender, app_password)
 
-        server.sendmail(sender, [to_email], msg.as_string())
+        print("📨 SENDING EMAIL...")
+        server.sendmail(sender, [to_email], body)
+
         server.quit()
 
-        print("✅ EMAIL SENT SUCCESSFULLY TO:", to_email)
+        print("✅ EMAIL SENT SUCCESSFULLY")
         return True
 
     except Exception as e:
-        print("❌ EMAIL ERROR:", str(e))
+        print("❌ EMAIL FAILED:", str(e))
         return False
 
 def send_verification_email(to_email, name, code):
