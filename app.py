@@ -213,7 +213,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
-            email TEXT UNIQUE NOT NULL,
+            email TEXT NOT NULL,
             password TEXT NOT NULL,
             role TEXT NOT NULL CHECK(role IN ('admin','collector','resident')),
             contact_number TEXT,
@@ -547,26 +547,22 @@ def register():
         errors = get_validation_errors_register(name, email, password, confirm_password, contact)
         if not errors:
             conn = get_db()
-            existing = conn.execute("SELECT user_id FROM users WHERE email=?", (email,)).fetchone()
-            if existing:
-                errors.append('That email address is already registered. Please use a different email or login.')
-            else:
-                try:
-                    verification_code = generate_code()
-                    uid = conn.execute("INSERT INTO users (name,email,password,role,contact_number,verification_code,is_verified) VALUES (?,?,?,?,?,?,?)",
-                                       (name, email, hash_password(password), 'resident', contact, verification_code, 0)).lastrowid
-                    conn.execute("INSERT INTO households (user_id,address,barangay_zone,latitude,longitude) VALUES (?,?,?,?,?)",
-                                 (uid, address, zone, 7.0707+random.uniform(-0.01,0.01), 125.6087+random.uniform(-0.01,0.01)))
-                    conn.commit()
-                    conn.close()
-                    send_verification_email(email, name, verification_code)
-                    return redirect(url_for('verify_email', email=email))
-                except Exception as e:
-                    print("REGISTER ERROR:", e)
-                    errors.append(str(e))
-                finally:
-                    try: conn.close()
-                    except: pass
+            try:
+                verification_code = generate_code()
+                uid = conn.execute("INSERT INTO users (name,email,password,role,contact_number,verification_code,is_verified) VALUES (?,?,?,?,?,?,?)",
+                                   (name, email, hash_password(password), 'resident', contact, verification_code, 0)).lastrowid
+                conn.execute("INSERT INTO households (user_id,address,barangay_zone,latitude,longitude) VALUES (?,?,?,?,?)",
+                             (uid, address, zone, 7.0707+random.uniform(-0.01,0.01), 125.6087+random.uniform(-0.01,0.01)))
+                conn.commit()
+                conn.close()
+                send_verification_email(email, name, verification_code)
+                return redirect(url_for('verify_email', email=email))
+            except Exception as e:
+                print("REGISTER ERROR:", e)
+                errors.append(str(e))
+            finally:
+                try: conn.close()
+                except: pass
     conn = get_db()
     zones = conn.execute("SELECT zone_name FROM zones").fetchall()
     conn.close()
