@@ -12,12 +12,11 @@ import hashlib
 import random
 import re
 import math
-import smtplib
 import threading
-import ssl
+import urllib.request
+import urllib.error
+import json
 
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 from functools import wraps
 
@@ -26,17 +25,26 @@ app.secret_key = 'barangay_waste_secret_2024'
 DATABASE = 'barangay_waste.db'
 
 # ═══════════════════════════════════════════════════
-# EMAIL CONFIGURATION - CHANGE THESE!
+# EMAIL CONFIGURATION — BREVO (FREE, 300 emails/day)
+# Steps to get your free Brevo API key:
+#   1. Sign up free at https://app.brevo.com
+#   2. Go to Account → SMTP & API → API Keys → Generate
+#   3. Paste your key below
 # ═══════════════════════════════════════════════════
 EMAIL_ENABLED = True
-GMAIL_USER = "justinxxjeffjacob@gmail.com"
-GMAIL_APP_PASSWORD = "yqokglktqtuuasar"
+BREVO_API_KEY = os.getenv("BREVO_API_KEY")  # ✅ SAFE! Dili makita sa code!   
+EMAIL_SENDER   = "justinxxjeffjacob.com"   # <-- use any email (can be fake for testing)
+EMAIL_SENDER_NAME = "EcoTrack"
 
 # ═══════════════════════════════════════════════════
-# WEBSITE URL - CHANGE THIS when deployed!
+# WEBSITE URL — change when deployed
 # ═══════════════════════════════════════════════════
 WEBSITE_URL = "https://smart-waste-4.onrender.com"
 
+
+# ─────────────────────────────────────────────────────────────
+# DATABASE HELPERS
+# ─────────────────────────────────────────────────────────────
 def get_db():
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
@@ -48,84 +56,133 @@ def hash_password(password):
 def generate_code():
     return str(random.randint(100000, 999999))
 
-import smtplib
-from email.mime.text import MIMEText
 
-import smtplib
-from email.mime.text import MIMEText
+# ─────────────────────────────────────────────────────────────
+# EMAIL — BREVO HTTP API (works on Render free tier!)
+# ─────────────────────────────────────────────────────────────
+def send_email_brevo(to_email, to_name, subject, html_body):
+    """
+    Send email via Brevo transactional API.
+    Uses only stdlib urllib — no extra pip installs needed.
+    Returns (success: bool, error_msg: str)
+    """
+    if not EMAIL_ENABLED:
+        print("📧 Email disabled — skipping send")
+        return True, None
 
-def send_email(to_email, subject, body):
-    sender = "justinxxjeffjacob@gmail.com"
-    app_password = "yqokglktqtuuasar".replace(" ", "")
+    if BREVO_API_KEY == "YOUR_BREVO_API_KEY_HERE":
+        print("⚠️  BREVO_API_KEY not set — skipping send (set it in app.py)")
+        return False, "API key not configured"
+
+    url = "https://api.brevo.com/v3/smtp/email"
+    payload = {
+        "sender":  {"name": EMAIL_SENDER_NAME, "email": EMAIL_SENDER},
+        "to":      [{"email": to_email, "name": to_name}],
+        "subject": subject,
+        "htmlContent": html_body,
+    }
+    data = json.dumps(payload).encode("utf-8")
+    headers = {
+        "accept":       "application/json",
+        "api-key":      BREVO_API_KEY,
+        "content-type": "application/json",
+    }
 
     try:
-        print("📧 START SMTP CONNECTION")
-
-        server = smtplib.SMTP("smtp.gmail.com", 587, timeout=30)
-        server.set_debuglevel(1)  # 👈 VERY IMPORTANT DEBUG
-
-        server.ehlo()
-        server.starttls()
-        server.ehlo()
-
-        print("🔐 LOGGING IN...")
-        server.login(sender, app_password)
-
-        print("📨 SENDING EMAIL...")
-        server.sendmail(sender, [to_email], body)
-
-        server.quit()
-
-        print("✅ EMAIL SENT SUCCESSFULLY")
-        return True
-
+        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            body = resp.read().decode()
+            print(f"✅ Email sent to {to_email} — response: {body[:120]}")
+            return True, None
+    except urllib.error.HTTPError as e:
+        err = e.read().decode()
+        print(f"❌ Brevo HTTP error {e.code}: {err}")
+        return False, f"HTTP {e.code}: {err}"
     except Exception as e:
-        print("❌ EMAIL FAILED:", str(e))
-        return False
+        print(f"❌ Email send failed: {e}")
+        return False, str(e)
+
 
 def send_verification_email(to_email, name, code):
-    subject = "Verify Email"
-
-    body = f"""
-    <h2>Hello {name}</h2>
-    <p>Your code is: <b>{code}</b></p>
+    subject = "EcoTrack — Verify Your Email"
+    html_body = f"""
+    <div style="font-family:sans-serif;max-width:500px;margin:auto;padding:28px;
+                background:#f0fdf4;border-radius:16px;">
+        <div style="text-align:center;margin-bottom:20px;">
+            <span style="font-size:40px;">♻️</span>
+            <h2 style="color:#166534;margin:8px 0;">EcoTrack</h2>
+        </div>
+        <div style="background:#fff;border-radius:12px;padding:28px;
+                    border:1px solid #bbf7d0;">
+            <h3 style="color:#15803d;margin-top:0;">Hello {name}! 👋</h3>
+            <p style="color:#374151;">
+                Thank you for registering. Use the code below to verify your email address:
+            </p>
+            <div style="text-align:center;margin:24px 0;">
+                <span style="font-size:36px;font-weight:800;letter-spacing:12px;
+                             color:#16a34a;background:#f0fdf4;padding:14px 24px;
+                             border-radius:12px;border:2px dashed #4ade80;
+                             font-family:monospace;">
+                    {code}
+                </span>
+            </div>
+            <p style="color:#6b7280;font-size:13px;">
+                This code is valid for <strong>30 minutes</strong>.<br>
+                If you did not register, you can safely ignore this email.
+            </p>
+        </div>
+    </div>
     """
+    def _send():
+        ok, err = send_email_brevo(to_email, name, subject, html_body)
+        if not ok:
+            print(f"⚠️  Verification email failed for {to_email}: {err}")
+    threading.Thread(target=_send, daemon=True).start()
 
-    print("🔥 VERIFY FUNCTION CALLED")
-
-    def send_async():
-        try:
-            send_email(to_email, subject, body)
-        except Exception as e:
-            print("❌ THREAD ERROR:", e)
-
-    threading.Thread(target=send_async).start()
 
 def send_reset_email(to_email, name, token):
     reset_link = f"{WEBSITE_URL}/reset-password/{token}"
-    subject = "EcoTrack - Reset Your Password"
-
-    body = f"""
-    <div style="font-family:sans-serif;max-width:500px;margin:auto;padding:20px;">
-        <h2>♻️ EcoTrack</h2>
-        <h3>Password Reset</h3>
-
-        <p>Hello {name},</p>
-
-        <a href="{reset_link}" 
-           style="background:#16a34a;color:white;padding:10px 20px;text-decoration:none;">
-           Reset Password
-        </a>
-
-        <p>If you didn't request this, ignore this email.</p>
+    subject = "EcoTrack — Reset Your Password"
+    html_body = f"""
+    <div style="font-family:sans-serif;max-width:500px;margin:auto;padding:28px;
+                background:#f0fdf4;border-radius:16px;">
+        <div style="text-align:center;margin-bottom:20px;">
+            <span style="font-size:40px;">♻️</span>
+            <h2 style="color:#166534;margin:8px 0;">EcoTrack</h2>
+        </div>
+        <div style="background:#fff;border-radius:12px;padding:28px;
+                    border:1px solid #bbf7d0;">
+            <h3 style="color:#15803d;margin-top:0;">Password Reset</h3>
+            <p style="color:#374151;">Hello {name},</p>
+            <p style="color:#374151;">
+                We received a request to reset your password.
+                Click the button below to set a new one:
+            </p>
+            <div style="text-align:center;margin:24px 0;">
+                <a href="{reset_link}"
+                   style="background:#16a34a;color:#fff;padding:12px 28px;
+                          text-decoration:none;border-radius:8px;font-weight:700;
+                          font-size:15px;">
+                   🔑 Reset Password
+                </a>
+            </div>
+            <p style="color:#6b7280;font-size:13px;">
+                This link expires in <strong>30 minutes</strong>.<br>
+                If you didn't request this, ignore this email.
+            </p>
+        </div>
     </div>
     """
+    def _send():
+        ok, err = send_email_brevo(to_email, name, subject, html_body)
+        if not ok:
+            print(f"⚠️  Reset email failed for {to_email}: {err}")
+    threading.Thread(target=_send, daemon=True).start()
 
-    threading.Thread(
-        target=send_email,
-        args=(to_email, subject, body)
-    ).start()
 
+# ─────────────────────────────────────────────────────────────
+# VALIDATION HELPERS
+# ─────────────────────────────────────────────────────────────
 def is_valid_name(name):
     if not name or len(name.strip()) < 3:
         return False
@@ -209,6 +266,10 @@ def estimate_waste_volume(bin_count, bin_type, fill_level):
     estimated_kg *= variation
     return round(estimated_kg, 1)
 
+
+# ─────────────────────────────────────────────────────────────
+# DATABASE INIT
+# ─────────────────────────────────────────────────────────────
 def init_db():
     if os.path.exists(DATABASE):
         os.remove(DATABASE)
@@ -439,6 +500,10 @@ def init_db():
     conn.commit()
     conn.close()
 
+
+# ─────────────────────────────────────────────────────────────
+# AUTH DECORATORS
+# ─────────────────────────────────────────────────────────────
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -457,6 +522,10 @@ def role_required(*roles):
         return decorated
     return decorator
 
+
+# ─────────────────────────────────────────────────────────────
+# ML PREDICTION
+# ─────────────────────────────────────────────────────────────
 def run_ml_prediction():
     conn = get_db()
     zones = conn.execute("SELECT * FROM zones").fetchall()
@@ -496,6 +565,10 @@ def run_ml_prediction():
     conn.close()
     return {'status':'success','predictions_generated':len(rows)}
 
+
+# ─────────────────────────────────────────────────────────────
+# ROUTES
+# ─────────────────────────────────────────────────────────────
 @app.route('/')
 def index():
     if 'user_id' in session: return redirect(url_for('dashboard'))
@@ -554,28 +627,29 @@ def register():
         errors = get_validation_errors_register(name, email, password, confirm_password, contact)
         if not errors:
             conn = get_db()
-            existing = conn.execute(
-                "SELECT user_id FROM users WHERE email=?",
-                (email,)
-            ).fetchone()
-
+            existing = conn.execute("SELECT user_id FROM users WHERE email=?", (email,)).fetchone()
             if existing:
-                errors.append("Email already exists")
+                errors.append("An account with this email already exists.")
+                conn.close()
             else:
                 try:
                     verification_code = generate_code()
-                    uid = conn.execute("INSERT INTO users (name,email,password,role,contact_number,verification_code,is_verified) VALUES (?,?,?,?,?,?,?)",
-                                       (name, email, hash_password(password), 'resident', contact, verification_code, 0)).lastrowid
-                    conn.execute("INSERT INTO households (user_id,address,barangay_zone,latitude,longitude) VALUES (?,?,?,?,?)",
-                                 (uid, address, zone, 7.0707+random.uniform(-0.01,0.01), 125.6087+random.uniform(-0.01,0.01)))
+                    uid = conn.execute(
+                        "INSERT INTO users (name,email,password,role,contact_number,verification_code,is_verified) VALUES (?,?,?,?,?,?,?)",
+                        (name, email, hash_password(password), 'resident', contact, verification_code, 0)
+                    ).lastrowid
+                    conn.execute(
+                        "INSERT INTO households (user_id,address,barangay_zone,latitude,longitude) VALUES (?,?,?,?,?)",
+                        (uid, address, zone, 7.0707+random.uniform(-0.01,0.01), 125.6087+random.uniform(-0.01,0.01))
+                    )
                     conn.commit()
                     conn.close()
+                    # Fire email in background; redirect immediately so user isn't waiting
                     send_verification_email(email, name, verification_code)
                     return redirect(url_for('verify_email', email=email))
                 except Exception as e:
                     print("REGISTER ERROR:", e)
-                    errors.append(str(e))
-                finally:
+                    errors.append("Registration failed. Please try again.")
                     try: conn.close()
                     except: pass
     conn = get_db()
@@ -592,14 +666,17 @@ def verify_email():
         email = request.form.get('email','').strip()
         code = request.form.get('code','').strip()
         conn = get_db()
-        user = conn.execute("SELECT * FROM users WHERE email=? AND verification_code=? AND is_verified=0", (email, code)).fetchone()
+        user = conn.execute(
+            "SELECT * FROM users WHERE email=? AND verification_code=? AND is_verified=0",
+            (email, code)
+        ).fetchone()
         if user:
             conn.execute("UPDATE users SET is_verified=1, verification_code=NULL WHERE user_id=?", (user['user_id'],))
             conn.commit()
             conn.close()
             return redirect(url_for('login', success='Email verified! You can now login.'))
         else:
-            error = 'Invalid email or verification code.'
+            error = 'Invalid email or verification code. Please check and try again.'
             conn.close()
     return render_template_string(VERIFY_HTML, error=error, success=success, prefill_email=prefill_email)
 
@@ -619,8 +696,8 @@ def forgot_password():
                 expiry = (datetime.now() + timedelta(minutes=30)).strftime('%Y-%m-%d %H:%M:%S')
                 conn.execute("UPDATE users SET reset_token=?, reset_token_expiry=? WHERE user_id=?", (token, expiry, user['user_id']))
                 conn.commit()
-                send_reset_email(email, user['name'], token)
                 conn.close()
+                send_reset_email(email, user['name'], token)
                 success = 'Password reset link has been sent to your email. Please check your inbox.'
             else:
                 error = 'No account found with that email address.'
@@ -632,7 +709,10 @@ def reset_password(token):
     error = None
     success = None
     conn = get_db()
-    user = conn.execute("SELECT * FROM users WHERE reset_token=? AND reset_token_expiry > ?", (token, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))).fetchone()
+    user = conn.execute(
+        "SELECT * FROM users WHERE reset_token=? AND reset_token_expiry > ?",
+        (token, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+    ).fetchone()
     if not user:
         conn.close()
         return render_template_string(RESET_HTML, error='Invalid or expired reset link. Please request a new one.', success=None, token=None)
@@ -644,7 +724,8 @@ def reset_password(token):
         elif password != confirm_password:
             error = 'Passwords do not match.'
         else:
-            conn.execute("UPDATE users SET password=?, reset_token=NULL, reset_token_expiry=NULL WHERE user_id=?", (hash_password(password), user['user_id']))
+            conn.execute("UPDATE users SET password=?, reset_token=NULL, reset_token_expiry=NULL WHERE user_id=?",
+                         (hash_password(password), user['user_id']))
             conn.commit()
             conn.close()
             return redirect(url_for('login', success='Password reset successful! You can now login with your new password.'))
@@ -682,11 +763,8 @@ def admin_dashboard():
         td.append({'date':d,'volume':round(vol,1)})
     zp = conn.execute("SELECT z.zone_name, SUM(CASE WHEN cl.status='collected' THEN 1 ELSE 0 END) as collected, SUM(CASE WHEN cl.status='missed' THEN 1 ELSE 0 END) as missed, SUM(CASE WHEN cl.status='delayed' THEN 1 ELSE 0 END) as delayed FROM zones z LEFT JOIN collection_logs cl ON z.zone_id=cl.zone_id GROUP BY z.zone_id").fetchall()
     
-    # FIXED: Newest residents get the LATEST collection logs with volume + containers
     zone_residents = []
-    status_options = ['collected', 'missed', 'delayed']
     for z in zones:
-        # ORDER BY u.user_id DESC - newest registered users FIRST!
         residents = conn.execute("""
             SELECT u.user_id, u.name, u.contact_number, h.address
             FROM users u JOIN households h ON u.user_id = h.user_id
@@ -695,7 +773,6 @@ def admin_dashboard():
         """, (z['zone_name'],)).fetchall()
         
         if residents:
-            # Get latest logs first (newest first) with volume data
             zone_logs = conn.execute("""
                 SELECT cl.status, cl.collected_at, cl.bin_count, cl.bin_type, cl.fill_level,
                        wd.waste_volume
@@ -771,13 +848,10 @@ def manage_schedules():
             zone_id = request.form.get('zone_id')
             collection_day = request.form.get('collection_day')
             collection_time = request.form.get('collection_time')
-            
-            # CHECK FOR DUPLICATE SCHEDULE
             existing = conn.execute("""
                 SELECT * FROM collection_schedules 
                 WHERE zone_id=? AND collection_day=? AND collection_time=?
             """, (zone_id, collection_day, collection_time)).fetchone()
-            
             if existing:
                 error = f"A schedule already exists for this zone on {collection_day} at {collection_time}."
             else:
@@ -791,7 +865,6 @@ def manage_schedules():
         elif a == 'delete':
             conn.execute("DELETE FROM collection_schedules WHERE schedule_id=?", (request.form['schedule_id'],))
             conn.commit()
-    
     schedules = conn.execute("SELECT cs.*, z.zone_name FROM collection_schedules cs JOIN zones z ON cs.zone_id=z.zone_id ORDER BY cs.collection_day").fetchall()
     zones = conn.execute("SELECT * FROM zones").fetchall()
     conn.close()
@@ -979,6 +1052,10 @@ def api_zone_perf():
     conn.close()
     return jsonify([dict(r) for r in data])
 
+
+# ─────────────────────────────────────────────────────────────
+# HTML TEMPLATES  (unchanged from original)
+# ─────────────────────────────────────────────────────────────
 BASE_STYLE = """<style>@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap');:root{--green-50:#f0fdf4;--green-100:#dcfce7;--green-200:#bbf7d0;--green-400:#4ade80;--green-500:#22c55e;--green-600:#16a34a;--green-700:#15803d;--green-800:#166534;--bg:#f8fafc;--surface:#fff;--border:#e2e8f0;--text:#0f172a;--text-muted:#64748b;--shadow:0 1px 3px rgba(0,0,0,.06);--shadow-md:0 4px 6px rgba(0,0,0,.07);--shadow-lg:0 10px 15px rgba(0,0,0,.08);--radius:12px;--radius-sm:8px;--sidebar-w:260px}*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px;line-height:1.6}.sidebar{position:fixed;left:0;top:0;bottom:0;width:var(--sidebar-w);background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:100;transition:transform .3s}.sidebar-brand{padding:24px 20px;border-bottom:1px solid var(--border)}.sidebar-logo{display:flex;align-items:center;gap:10px}.sidebar-logo-icon{width:38px;height:38px;background:linear-gradient(135deg,var(--green-500),var(--green-700));border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;box-shadow:0 2px 8px rgba(34,197,94,.35)}.sidebar-logo-text h1{font-size:13px;font-weight:700;color:var(--text);line-height:1.2}.sidebar-logo-text span{font-size:11px;color:var(--text-muted);font-weight:400}.sidebar-nav{flex:1;padding:16px 12px;overflow-y:auto}.nav-section-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);padding:0 8px;margin:16px 0 6px}.nav-link{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--radius-sm);text-decoration:none;color:var(--text-muted);font-weight:500;font-size:13.5px;transition:all .18s;margin-bottom:2px}.nav-link:hover{background:var(--green-50);color:var(--green-700)}.nav-link.active{background:var(--green-50);color:var(--green-700);font-weight:600}.nav-link .icon{font-size:15px;width:18px;text-align:center}.sidebar-footer{padding:16px 20px;border-top:1px solid var(--border)}.sidebar-user{display:flex;align-items:center;gap:10px;padding:8px;border-radius:var(--radius-sm)}.sidebar-user-avatar{width:34px;height:34px;background:linear-gradient(135deg,var(--green-400),var(--green-600));border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:13px}.sidebar-user-info{flex:1;min-width:0}.sidebar-user-name{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sidebar-user-role{font-size:11px;color:var(--text-muted);text-transform:capitalize}.main-content{margin-left:var(--sidebar-w);min-height:100vh;display:flex;flex-direction:column}.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 28px;height:60px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}.topbar-title{font-size:16px;font-weight:700}.topbar-right{display:flex;align-items:center;gap:12px}.page-content{padding:28px;flex:1}.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow)}.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}.card-title{font-size:14px;font-weight:700;color:var(--text)}.card-subtitle{font-size:12px;color:var(--text-muted);margin-top:2px}.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px}.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);transition:transform .2s,box-shadow .2s;animation:fadeUp .4s ease both}.stat-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-md)}.stat-label{font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em}.stat-value{font-size:28px;font-weight:800;color:var(--text);margin:4px 0;font-family:'DM Mono',monospace}.stat-meta{font-size:12px;color:var(--text-muted)}.stat-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;margin-bottom:12px}.stat-icon.green{background:var(--green-50)}.stat-icon.yellow{background:#fef9c3}.stat-icon.red{background:#fef2f2}.stat-icon.blue{background:#eff6ff}.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:20px}.mb-20{margin-bottom:20px}.mb-24{margin-bottom:24px}.badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;text-transform:capitalize}.badge-green{background:var(--green-100);color:var(--green-700)}.badge-yellow{background:#fef9c3;color:#854d0e}.badge-red{background:#fee2e2;color:#991b1b}.badge-blue{background:#dbeafe;color:#1d4ed8}.badge-gray{background:#f1f5f9;color:#475569}.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;border:none;cursor:pointer;transition:all .18s;text-decoration:none;font-family:inherit}.btn-primary{background:var(--green-600);color:#fff}.btn-primary:hover{background:var(--green-700)}.btn-secondary{background:var(--green-50);color:var(--green-700);border:1px solid var(--green-200)}.btn-secondary:hover{background:var(--green-100)}.btn-danger{background:#fee2e2;color:#dc2626}.btn-danger:hover{background:#fecaca}.btn-sm{padding:5px 12px;font-size:12px}.btn-ghost{background:transparent;color:var(--text-muted);border:1px solid var(--border)}.btn-ghost:hover{background:var(--bg)}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse}th{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);padding:8px 14px;text-align:left;border-bottom:1px solid var(--border)}td{padding:11px 14px;border-bottom:1px solid var(--border);font-size:13px}tr:last-child td{border-bottom:none}tr:hover td{background:var(--green-50)}.form-group{margin-bottom:16px}.form-label{display:block;font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em}.form-control{width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:inherit;font-size:13.5px;color:var(--text);background:var(--surface);transition:border-color .18s;outline:none}.form-control:focus{border-color:var(--green-500);box-shadow:0 0 0 3px rgba(34,197,94,.1)}.form-control.is-invalid{border-color:#ef4444;box-shadow:0 0 0 3px rgba(239,68,68,.1)}select.form-control{cursor:pointer}textarea.form-control{resize:vertical}.progress{height:8px;background:#e2e8f0;border-radius:4px;overflow:hidden}.progress-bar{height:100%;background:linear-gradient(90deg,var(--green-400),var(--green-600));border-radius:4px;transition:width 1s}@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}.alert{padding:12px 16px;border-radius:var(--radius-sm);font-size:13px;margin-bottom:16px}.alert-danger{background:#fee2e2;color:#991b1b;border:1px solid #fecaca}.alert-success{background:var(--green-50);color:var(--green-800);border:1px solid var(--green-200)}.alert-info{background:#eff6ff;color:#1d4ed8;border:1px solid #dbeafe}.alert ul{margin:6px 0 0 18px}.alert ul li{margin-bottom:3px}.mobile-header{display:none;background:var(--surface);border-bottom:1px solid var(--border);padding:0 16px;height:56px;align-items:center;justify-content:space-between;position:fixed;top:0;left:0;right:0;z-index:200}@media(max-width:768px){.sidebar{transform:translateX(-100%)}.sidebar.open{transform:translateX(0)}.main-content{margin-left:0}.mobile-header{display:flex}.page-content{padding:16px;padding-top:72px}.grid-2{grid-template-columns:1fr}.stats-grid{grid-template-columns:1fr 1fr}.topbar{display:none}.sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:99}.sidebar-overlay.open{display:block}}.chart-container{position:relative;height:220px;width:100%}.risk-dot{width:10px;height:10px;border-radius:50%;display:inline-block}.risk-high{background:#ef4444;box-shadow:0 0 0 3px rgba(239,68,68,.2)}.risk-medium{background:#f59e0b;box-shadow:0 0 0 3px rgba(245,158,11,.2)}.risk-low{background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.2)}.empty-state{text-align:center;padding:40px;color:var(--text-muted)}.empty-state .icon{font-size:40px;margin-bottom:12px}.modal-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center}.modal-backdrop.open{display:flex}.modal{background:var(--surface);border-radius:var(--radius);padding:28px;width:440px;max-width:95%;box-shadow:var(--shadow-lg);animation:fadeUp .25s}.modal-title{font-size:16px;font-weight:700;margin-bottom:16px}.modal-footer{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}.estimation-result{font-family:'DM Mono',monospace;font-size:20px;font-weight:700;color:var(--green-700);text-align:center;padding:8px;background:#fff;border-radius:6px;margin-top:8px}.zone-section{border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px;overflow:hidden}.zone-section-header{padding:14px 18px;background:var(--green-50);display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;font-weight:600;font-size:13px}.zone-section-header:hover{background:var(--green-100)}.zone-section-body{display:none;padding:0}.zone-section-body.open{display:block}.pred-pill{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;margin:2px}.pred-pill-high{background:#fee2e2;color:#991b1b}.pred-pill-medium{background:#fef9c3;color:#854d0e}.pred-pill-low{background:var(--green-100);color:var(--green-700)}.collection-timeline{display:flex;flex-direction:column;gap:8px}.collection-item{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg)}.collection-icon{font-size:20px;flex-shrink:0}.collection-info{flex:1;min-width:0}.collection-date{font-size:12px;color:var(--text-muted);font-family:'DM Mono',monospace}</style>"""
 SIDEBAR_ADMIN = """<div class="sidebar" id="sidebar"><div class="sidebar-brand"><div class="sidebar-logo"><div class="sidebar-logo-icon">♻️</div><div class="sidebar-logo-text"><h1>EcoTrack</h1><span>Barangay Waste System</span></div></div></div><nav class="sidebar-nav"><div class="nav-section-label">Overview</div><a href="/admin" class="nav-link active"><span class="icon">🏠</span> Dashboard</a><a href="/admin/analytics" class="nav-link"><span class="icon">📊</span> Analytics & ML</a><div class="nav-section-label">Management</div><a href="/admin/zones" class="nav-link"><span class="icon">🗺️</span> Zones</a><a href="/admin/schedules" class="nav-link"><span class="icon">📅</span> Schedules</a><a href="/admin/users" class="nav-link"><span class="icon">👥</span> Users</a><a href="/admin/reports" class="nav-link"><span class="icon">📋</span> Reports</a><div class="nav-section-label">Communications</div><a href="/admin/notifications" class="nav-link"><span class="icon">🔔</span> Notifications</a></nav><div class="sidebar-footer"><div class="sidebar-user"><div class="sidebar-user-avatar">{{ session.name[0] }}</div><div class="sidebar-user-info"><div class="sidebar-user-name">{{ session.name }}</div><div class="sidebar-user-role">{{ session.role }}</div></div><a href="/logout" title="Logout" style="color:var(--text-muted);font-size:16px;">⎋</a></div></div></div><div class="sidebar-overlay" id="overlay" onclick="closeSidebar()"></div>"""
 SIDEBAR_COLLECTOR = """<div class="sidebar" id="sidebar"><div class="sidebar-brand"><div class="sidebar-logo"><div class="sidebar-logo-icon">♻️</div><div class="sidebar-logo-text"><h1>EcoTrack</h1><span>Collector Portal</span></div></div></div><nav class="sidebar-nav"><div class="nav-section-label">Collector</div><a href="/collector" class="nav-link active"><span class="icon">🚛</span> My Routes</a></nav><div class="sidebar-footer"><div class="sidebar-user"><div class="sidebar-user-avatar">{{ session.name[0] }}</div><div class="sidebar-user-info"><div class="sidebar-user-name">{{ session.name }}</div><div class="sidebar-user-role">Collector</div></div><a href="/logout" style="color:var(--text-muted);font-size:16px;">⎋</a></div></div></div><div class="sidebar-overlay" id="overlay" onclick="closeSidebar()"></div>"""
@@ -1014,8 +1091,10 @@ COLLECTOR_HTML = """<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name=
 
 RESIDENT_HTML = """<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>My Dashboard - EcoTrack</title>""" + BASE_STYLE + """</head><body>""" + MOBILE_HEADER + SIDEBAR_RESIDENT + """<div class="main-content"><div class="topbar"><div class="topbar-title">🏡 My Dashboard</div><span>{{ today }}</span></div><div class="page-content">{% if household %}<div class="card mb-24" style="background:linear-gradient(135deg,var(--green-600),var(--green-800));color:#fff;border:none;"><div style="display:flex;align-items:center;gap:16px;"><div style="font-size:40px;">🏠</div><div><div style="font-size:18px;font-weight:800;">{{ session.name }}'s Household</div><div style="opacity:.85;">📍 {{ household.address }} | 🗺️ {{ household.barangay_zone }}</div></div>{% if last_log %}<div style="background:rgba(255,255,255,.15);padding:12px 18px;border-radius:10px;text-align:center;margin-left:auto;"><div style="font-size:11px;">Last: {{ last_log.status }}</div><div style="font-size:20px;">{% if last_log.status=='collected' %}✅{% elif last_log.status=='missed' %}❌{% else %}⏳{% endif %}</div></div>{% endif %}</div></div>{% endif %}<div class="grid-2 mb-24"><div class="card"><div class="card-header"><div class="card-title">📅 Schedule</div></div>{% if schedule %}{% for s in schedule %}<div style="display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border);"><div><strong>{{ s.collection_day }}</strong></div><div style="color:var(--green-700);font-weight:700;">{% if format_time_ampm %}{{ format_time_ampm(s.collection_time) }}{% else %}{{ s.collection_time }}{% endif %}</div></div>{% endfor %}{% else %}<p>No schedule</p>{% endif %}</div><div class="card"><div class="card-header"><div class="card-title">📦 Collection History</div></div>{% if recent_collections %}<div class="collection-timeline">{% for c in recent_collections %}<div class="collection-item"><div class="collection-icon">{% if c.status == 'collected' %}✅{% elif c.status == 'missed' %}❌{% else %}⏳{% endif %}</div><div class="collection-info"><div style="font-weight:600;text-transform:capitalize;">{{ c.status }}</div>{% if c.bin_count %}<div style="font-size:11px;color:var(--text-muted);">{{ c.bin_count }}x {{ c.bin_type.replace('_',' ') if c.bin_type else '' }} · {{ c.fill_level }} fill</div>{% endif %}</div><div class="collection-date">{{ c.collected_at[:10] }}</div></div>{% endfor %}</div>{% else %}<p>No history yet</p>{% endif %}</div></div><div class="grid-2 mb-24"><div class="card"><div class="card-header"><div class="card-title">🔔 Notifications</div></div>{% if notifs %}{% for n in notifs %}<div style="padding:10px 0;border-bottom:1px solid var(--border);"><div>{{ n.message }}</div><div style="font-size:11px;color:var(--text-muted);">{{ n.sent_at[:16] }}</div></div>{% endfor %}{% else %}<p>No notifications</p>{% endif %}</div><div class="card"><div class="card-header"><div class="card-title">📢 Report</div></div><form method="POST" action="/resident/report"><div class="form-group"><label class="form-label">Issue</label><select name="issue_type" class="form-control"><option value="missed pickup">Missed Pickup</option><option value="overflow">Overflow</option><option value="wrong schedule">Wrong Schedule</option><option value="other">Other</option></select></div><div class="form-group"><label class="form-label">Description</label><textarea name="description" class="form-control" rows="3" required></textarea></div><button type="submit" class="btn btn-primary" style="width:100%;">Submit</button></form></div></div></div></div>""" + JS_SIDEBAR + """</body></html>"""
 
-import os
 
+# ─────────────────────────────────────────────────────────────
+# ENTRY POINT
+# ─────────────────────────────────────────────────────────────
 if __name__ == '__main__':
     init_db()
     run_ml_prediction()
