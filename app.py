@@ -527,12 +527,36 @@ def reset_password(token):
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    if session['role'] == 'admin': return redirect(url_for('admin_dashboard'))
-    elif session['role'] == 'collector': return redirect(url_for('collector_dashboard'))
-    else: return redirect(url_for('resident_dashboard'))
+    if session['role'] == 'admin': return redirect('/admin')
+    elif session['role'] == 'collector': return redirect('/collector')
+    else: return redirect('/resident')
 
-    # FIXED: Each resident gets UNIQUE data from ACTUAL collector logs
-    # Volume matches what the collector inputted
+@app.route('/admin')
+@login_required
+@role_required('admin')
+def admin_dashboard():
+    conn = get_db()
+    th = conn.execute("SELECT COUNT(*) FROM households").fetchone()[0]
+    tu = conn.execute("SELECT COUNT(*) FROM users WHERE role='resident'").fetchone()[0]
+    today = datetime.now().strftime('%A')
+    ts = conn.execute("SELECT cs.*, z.zone_name FROM collection_schedules cs JOIN zones z ON cs.zone_id=z.zone_id WHERE cs.collection_day=? AND cs.status='active'", (today,)).fetchall()
+    lt = conn.execute("SELECT status, COUNT(*) as cnt FROM collection_logs WHERE date(collected_at)=date('now') GROUP BY status").fetchall()
+    ld = {r['status']:r['cnt'] for r in lt}
+    col, mis, de = ld.get('collected',0), ld.get('missed',0), ld.get('delayed',0)
+    tl = col+mis+de
+    pct = round((col/tl)*100) if tl > 0 else 0
+    hr = conn.execute("SELECT p.*, z.zone_name FROM predictions p JOIN zones z ON p.zone_id=z.zone_id WHERE p.waste_level='high' AND p.predicted_date >= date('now') ORDER BY p.predicted_date LIMIT 5").fetchall()
+    zones = conn.execute("SELECT * FROM zones").fetchall()
+    ore = conn.execute("SELECT COUNT(*) FROM reports WHERE status='open'").fetchone()[0]
+    td = []
+    for i in range(6,-1,-1):
+        d = (datetime.now()-timedelta(days=i)).strftime('%Y-%m-%d')
+        vol = conn.execute("SELECT SUM(waste_volume) FROM waste_data WHERE date=?", (d,)).fetchone()[0] or 0
+        td.append({'date':d,'volume':round(vol,1)})
+    zp = conn.execute("SELECT z.zone_name, SUM(CASE WHEN cl.status='collected' THEN 1 ELSE 0 END) as collected, SUM(CASE WHEN cl.status='missed' THEN 1 ELSE 0 END) as missed, SUM(CASE WHEN cl.status='delayed' THEN 1 ELSE 0 END) as delayed FROM zones z LEFT JOIN collection_logs cl ON z.zone_id=cl.zone_id GROUP BY z.zone_id").fetchall()
+    
+    # Each resident gets UNIQUE data from ACTUAL collector logs
+    # Old residents keep their data, new residents get different data
     zone_residents = []
     bts_all = ['medium_drum','large_drum','small_drum','medium_bag','large_bag','small_bag','small_bin','large_bin']
     fls_all = ['full','mostly','half','quarter','overflow']
@@ -546,7 +570,7 @@ def dashboard():
         """, (z['zone_name'],)).fetchall()
         
         if residents:
-            # Get ACTUAL collector logs from collection_logs + waste_data
+            # Get ACTUAL collector logs for this zone
             zone_logs = conn.execute("""
                 SELECT cl.log_id, cl.status, cl.collected_at, cl.bin_count, cl.bin_type, cl.fill_level,
                        wd.waste_volume
@@ -560,24 +584,19 @@ def dashboard():
             resident_list = []
             for i, r in enumerate(residents):
                 if zone_logs and len(zone_logs) > 0:
-                    # Get a different log for each resident
                     log_index = i % len(zone_logs)
                     log = zone_logs[log_index]
-                    
                     last_status = log['status']
                     last_collected = log['collected_at']
                     bin_count = log['bin_count'] or 0
                     bin_type = log['bin_type'] or 'medium_drum'
                     fill_level = log['fill_level'] or 'full'
                     waste_volume = log['waste_volume']
-                    
-                    # If waste_volume is NULL or 0, calculate from collector's bin data
                     if (not waste_volume or waste_volume == 0) and bin_count > 0:
                         waste_volume = estimate_waste_volume(bin_count, bin_type, fill_level)
                     elif not waste_volume:
                         waste_volume = 0
                 else:
-                    # No logs for this zone, use unique default per resident
                     uid = r['user_id']
                     status_options = ['collected', 'missed', 'delayed']
                     last_status = status_options[uid % 3]
@@ -597,6 +616,12 @@ def dashboard():
                 })
             
             zone_residents.append({'zone_name': z['zone_name'], 'zone_id': z['zone_id'], 'residents': resident_list})
+
+    conn.close()
+    return render_template_string(ADMIN_HTML, total_households=th, total_users=tu, today_schedules=ts,
+                                  collected=col, missed=mis, delayed=de, pct=pct, high_risk=hr,
+                                  zones=zones, open_reports=ore, trend_data=td,
+                                  zone_perf=[dict(r) for r in zp], today=today, zone_residents=zone_residents)
 
 @app.route('/admin/zones', methods=['GET','POST'])
 @login_required
