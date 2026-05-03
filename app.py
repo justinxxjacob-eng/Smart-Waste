@@ -16,15 +16,10 @@ import smtplib
 import threading
 import ssl
 
-import resend
-
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 from functools import wraps
-
-# Initialize Resend API key
-resend.api_key = os.getenv("RESEND_API_KEY")
 
 app = Flask(__name__)
 app.secret_key = 'barangay_waste_secret_2024'
@@ -53,27 +48,27 @@ def hash_password(password):
 def generate_code():
     return str(random.randint(100000, 999999))
 
-import os
-import resend
+def send_email(to_email, subject, body):
+    sender = GMAIL_USER
+    app_password = GMAIL_APP_PASSWORD
 
-resend.api_key = os.getenv("RESEND_API_KEY")
-
-def send_email(to_email, subject, html_body):
-    print("🔥 EMAIL FUNCTION CALLED")
+    msg = MIMEText(body)
+    msg["Subject"] = subject
+    msg["From"] = sender
+    msg["To"] = to_email
 
     try:
-        response = resend.Emails.send({
-            "from": "onboarding@resend.dev",  # fixed sender
-            "to": to_email,
-            "subject": subject,
-            "html": html_body
-        })
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(sender, app_password)
+        server.sendmail(sender, to_email, msg.as_string())
+        server.quit()
 
-        print("✅ RESPONSE:", response)
+        print("Email sent")
         return True
 
     except Exception as e:
-        print("❌ EMAIL ERROR:", e)
+        print("Error:", e)
         return False
 
 def send_verification_email(to_email, name, code):
@@ -547,22 +542,30 @@ def register():
         errors = get_validation_errors_register(name, email, password, confirm_password, contact)
         if not errors:
             conn = get_db()
-            try:
-                verification_code = generate_code()
-                uid = conn.execute("INSERT INTO users (name,email,password,role,contact_number,verification_code,is_verified) VALUES (?,?,?,?,?,?,?)",
-                                   (name, email, hash_password(password), 'resident', contact, verification_code, 0)).lastrowid
-                conn.execute("INSERT INTO households (user_id,address,barangay_zone,latitude,longitude) VALUES (?,?,?,?,?)",
-                             (uid, address, zone, 7.0707+random.uniform(-0.01,0.01), 125.6087+random.uniform(-0.01,0.01)))
-                conn.commit()
-                conn.close()
-                send_verification_email(email, name, verification_code)
-                return redirect(url_for('verify_email', email=email))
-            except Exception as e:
-                print("REGISTER ERROR:", e)
-                errors.append(str(e))
-            finally:
-                try: conn.close()
-                except: pass
+            existing = conn.execute(
+                "SELECT user_id FROM users WHERE email=?",
+                (email,)
+            ).fetchone()
+
+            if existing:
+                errors.append("Email already exists")
+            else:
+                try:
+                    verification_code = generate_code()
+                    uid = conn.execute("INSERT INTO users (name,email,password,role,contact_number,verification_code,is_verified) VALUES (?,?,?,?,?,?,?)",
+                                       (name, email, hash_password(password), 'resident', contact, verification_code, 0)).lastrowid
+                    conn.execute("INSERT INTO households (user_id,address,barangay_zone,latitude,longitude) VALUES (?,?,?,?,?)",
+                                 (uid, address, zone, 7.0707+random.uniform(-0.01,0.01), 125.6087+random.uniform(-0.01,0.01)))
+                    conn.commit()
+                    conn.close()
+                    send_verification_email(email, name, verification_code)
+                    return redirect(url_for('verify_email', email=email))
+                except Exception as e:
+                    print("REGISTER ERROR:", e)
+                    errors.append(str(e))
+                finally:
+                    try: conn.close()
+                    except: pass
     conn = get_db()
     zones = conn.execute("SELECT zone_name FROM zones").fetchall()
     conn.close()
