@@ -78,52 +78,37 @@ def send_email(to_email, subject, html_body):
 
 def send_verification_email(to_email, name, code):
     subject = "EcoTrack - Verify Your Email Address"
-
     body = f"""
     <div style="font-family:sans-serif;max-width:500px;margin:auto;padding:20px;">
         <h2>♻️ EcoTrack</h2>
         <h3>Welcome, {name}!</h3>
-
         <p>Your verification code:</p>
-
         <div style="font-size:32px;font-weight:bold;letter-spacing:5px;">
             {code}
         </div>
-
         <p>This code expires in 30 minutes.</p>
     </div>
     """
-
-    # ✅ REAL-TIME (non-blocking)
-    threading.Thread(
-        target=send_email,
-        args=(to_email, subject, body)
-    ).start()
+    # ✅ GI-ILISAN NATO NI — walay threading!
+    send_email(to_email, subject, body)
 
 def send_reset_email(to_email, name, token):
     reset_link = f"{WEBSITE_URL}/reset-password/{token}"
     subject = "EcoTrack - Reset Your Password"
-
     body = f"""
     <div style="font-family:sans-serif;max-width:500px;margin:auto;padding:20px;">
         <h2>♻️ EcoTrack</h2>
         <h3>Password Reset</h3>
-
         <p>Hello {name},</p>
-
         <a href="{reset_link}" 
            style="background:#16a34a;color:white;padding:10px 20px;text-decoration:none;">
            Reset Password
         </a>
-
         <p>If you didn't request this, ignore this email.</p>
     </div>
     """
-
-    threading.Thread(
-        target=send_email,
-        args=(to_email, subject, body)
-    ).start()
+    # ✅ GI-ILISAN NATO NI — walay threading!
+    send_email(to_email, subject, body)
 
 def is_valid_name(name):
     if not name or len(name.strip()) < 3:
