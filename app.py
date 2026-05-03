@@ -63,7 +63,7 @@ def send_email(to_email, subject, html_body):
 
     try:
         resend.Emails.send({
-            "from": os.getenv("EMAIL_FROM"),
+            "from": "onboarding@resend.dev",  # 🔥 THIS FIXES EVERYTHING
             "to": to_email,
             "subject": subject,
             "html": html_body
