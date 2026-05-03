@@ -48,27 +48,36 @@ def hash_password(password):
 def generate_code():
     return str(random.randint(100000, 999999))
 
+import smtplib
+from email.mime.text import MIMEText
+
 def send_email(to_email, subject, body):
     sender = "justinxxjeffjacob@gmail.com"
-    app_password = "yqokglktqtuuasar"
+    app_password = "yqokglktqtuuasar".replace(" ", "")
 
-    msg = MIMEText(body)
+    msg = MIMEText(body, "html")
     msg["Subject"] = subject
     msg["From"] = sender
     msg["To"] = to_email
 
     try:
-        server = smtplib.SMTP("smtp.gmail.com", 587)
+        print("📧 Connecting to Gmail SMTP...")
+
+        server = smtplib.SMTP("smtp.gmail.com", 587, timeout=30)
+        server.ehlo()
         server.starttls()
+        server.ehlo()
+
         server.login(sender, app_password)
-        server.sendmail(sender, to_email, msg.as_string())
+
+        server.sendmail(sender, [to_email], msg.as_string())
         server.quit()
 
-        print("Email sent")
+        print("✅ EMAIL SENT SUCCESSFULLY TO:", to_email)
         return True
 
     except Exception as e:
-        print("Error:", e)
+        print("❌ EMAIL ERROR:", str(e))
         return False
 
 def send_verification_email(to_email, name, code):
