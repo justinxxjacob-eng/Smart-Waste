@@ -77,28 +77,22 @@ def send_email(to_email, subject, html_body):
         return False
 
 def send_verification_email(to_email, name, code):
-    subject = "EcoTrack - Verify Your Email Address"
+    subject = "Verify Email"
 
     body = f"""
-    <div style="font-family:sans-serif;max-width:500px;margin:auto;padding:20px;">
-        <h2>♻️ EcoTrack</h2>
-        <h3>Welcome, {name}!</h3>
-
-        <p>Your verification code:</p>
-
-        <div style="font-size:32px;font-weight:bold;letter-spacing:5px;">
-            {code}
-        </div>
-
-        <p>This code expires in 30 minutes.</p>
-    </div>
+    <h2>Hello {name}</h2>
+    <p>Your code is: <b>{code}</b></p>
     """
 
-    # ✅ REAL-TIME (non-blocking)
-    threading.Thread(
-        target=send_email,
-        args=(to_email, subject, body)
-    ).start()
+    print("🔥 VERIFY FUNCTION CALLED")
+
+    def send_async():
+        try:
+            send_email(to_email, subject, body)
+        except Exception as e:
+            print("❌ THREAD ERROR:", e)
+
+    threading.Thread(target=send_async).start()
 
 def send_reset_email(to_email, name, token):
     reset_link = f"{WEBSITE_URL}/reset-password/{token}"
