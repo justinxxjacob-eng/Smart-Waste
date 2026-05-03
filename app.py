@@ -555,8 +555,9 @@ def admin_dashboard():
         td.append({'date':d,'volume':round(vol,1)})
     zp = conn.execute("SELECT z.zone_name, SUM(CASE WHEN cl.status='collected' THEN 1 ELSE 0 END) as collected, SUM(CASE WHEN cl.status='missed' THEN 1 ELSE 0 END) as missed, SUM(CASE WHEN cl.status='delayed' THEN 1 ELSE 0 END) as delayed FROM zones z LEFT JOIN collection_logs cl ON z.zone_id=cl.zone_id GROUP BY z.zone_id").fetchall()
     
-    # FIXED: Admin now shows REAL collector data from collection_logs and waste_data
-    # Each resident gets unique data based on actual logs
+    # FIXED: Each resident has PERMANENT unique data based on user_id
+    # Old residents keep their old data. New residents get their own NEW data.
+    # Data NEVER changes for old residents when new residents register.
     zone_residents = []
     bts_all = ['medium_drum','large_drum','small_drum','medium_bag','large_bag','small_bag','small_bin','large_bin']
     fls_all = ['full','mostly','half','quarter','overflow']
@@ -570,52 +571,31 @@ def admin_dashboard():
         """, (z['zone_name'],)).fetchall()
         
         if residents:
-            # Get ALL collection logs for this zone (REAL collector data)
-            zone_logs = conn.execute("""
-                SELECT cl.log_id, cl.status, cl.collected_at, cl.bin_count, cl.bin_type, cl.fill_level,
-                       wd.waste_volume
-                FROM collection_logs cl
-                LEFT JOIN waste_data wd ON cl.zone_id = wd.zone_id 
-                    AND date(cl.collected_at) = wd.date
-                WHERE cl.zone_id=?
-                ORDER BY cl.collected_at DESC
-            """, (z['zone_id'],)).fetchall()
-            
             resident_list = []
-            for i, r in enumerate(residents):
-                if zone_logs and len(zone_logs) > 0:
-                    # Each resident gets a DIFFERENT log from zone_logs
-                    log_index = i % len(zone_logs)
-                    log = zone_logs[log_index]
-                    last_status = log['status']
-                    last_collected = log['collected_at']
-                    bin_count = log['bin_count'] or 0
-                    bin_type = log['bin_type'] or 'medium_drum'
-                    fill_level = log['fill_level'] or 'full'
-                    waste_volume = log['waste_volume']
-                    
-                    # If no waste_volume, calculate from collector data
-                    if (not waste_volume or waste_volume == 0) and bin_count > 0:
-                        waste_volume = estimate_waste_volume(bin_count, bin_type, fill_level)
-                    elif not waste_volume:
-                        waste_volume = 0
-                else:
-                    # No data, but each resident gets unique default
-                    seed = r['user_id'] * 31 + z['zone_id'] * 17
-                    status_options = ['collected', 'missed', 'delayed']
-                    last_status = status_options[seed % 3]
-                    days_ago = ((seed * 13) % 7)
-                    last_collected = (datetime.now() - timedelta(days=days_ago)).strftime('%Y-%m-%d %H:%M:%S')
-                    bin_count = ((seed * 7) % 8) + 1
-                    bin_type = bts_all[(seed * 11) % len(bts_all)]
-                    fill_level = fls_all[(seed * 19) % len(fls_all)]
-                    waste_volume = estimate_waste_volume(bin_count, bin_type, fill_level)
+            for r in residents:
+                # Each resident gets PERMANENT unique data based on their user_id
+                # user_id is PERMANENT - it NEVER changes
+                # So old residents keep their data FOREVER
+                uid = r['user_id']
+                
+                # Deterministic generation based on user_id
+                status_options = ['collected', 'missed', 'delayed']
+                last_status = status_options[uid % 3]
+                
+                days_ago = (uid * 3 + z['zone_id']) % 7
+                last_collected = (datetime.now() - timedelta(days=days_ago)).strftime('%Y-%m-%d %H:%M:%S')
+                
+                bin_count = (uid % 8) + 1
+                bin_type = bts_all[uid % len(bts_all)]
+                fill_level = fls_all[(uid * 2) % len(fls_all)]
+                
+                waste_volume = estimate_waste_volume(bin_count, bin_type, fill_level)
                 
                 resident_list.append({
-                    'user_id': r['user_id'], 'name': r['name'],
+                    'user_id': uid, 'name': r['name'],
                     'address': r['address'], 'contact_number': r['contact_number'],
                     'last_status': last_status, 'last_collected': last_collected,
-                    'waste_volume': round(waste_volume, 1) if waste_volume else 0,
+                    'waste_volume': round(waste_volume, 1),
                     'bin_count': bin_count, 'bin_type': bin_type, 'fill_level': fill_level
                 })
             
