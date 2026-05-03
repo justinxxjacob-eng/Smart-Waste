@@ -49,8 +49,8 @@ def generate_code():
     return str(random.randint(100000, 999999))
 
 def send_email(to_email, subject, body):
-    sender = GMAIL_USER
-    app_password = GMAIL_APP_PASSWORD
+    sender = "justinxxjeffjacob@gmail.com"
+    app_password = "yqokglktqtuuasar"
 
     msg = MIMEText(body)
     msg["Subject"] = subject
