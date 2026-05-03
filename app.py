@@ -62,18 +62,19 @@ def send_email(to_email, subject, html_body):
     print("🔥 EMAIL FUNCTION CALLED")
 
     try:
-        resend.Emails.send({
-            "from": "onboarding@resend.dev",  # 🔥 THIS FIXES EVERYTHING
+        response = resend.Emails.send({
+            "from": "onboarding@resend.dev",
             "to": to_email,
             "subject": subject,
             "html": html_body
         })
 
-        print("✅ Email sent successfully")
+        print("✅ RESPONSE:", response)  # 🔥 IMPORTANT DEBUG
+
         return True
 
     except Exception as e:
-        print("❌ Email error:", e)
+        print("❌ EMAIL ERROR:", e)
         return False
 
 def send_verification_email(to_email, name, code):
